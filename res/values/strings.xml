@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <string name="app_name">uinput</string>
+    <string name="menu_settings">Settings</string>
+    <string name="open">Open</string>
+    <string name="close">Close</string>
+    <string name="service_uinput_is_running">/dev/uinput has been connected</string>
+
+</resources>

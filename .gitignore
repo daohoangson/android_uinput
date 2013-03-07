@@ -18,3 +18,6 @@ local.properties
 # Eclipse project files
 .classpath
 .project
+obj
+libs/armeabi/libuinputdemo.so
+.cproject
