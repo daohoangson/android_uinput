@@ -54,7 +54,7 @@ static int suinput_write_syn(int uinput_fd,
   return suinput_write(uinput_fd, EV_SYN, SYN_REPORT, 0);
 }
 
-int suinput_open(const char* device_name, const struct input_id* id)
+int suinput_open(const char* device_name, const struct input_id* id, bool absolute, int32_t screen_width, int32_t screen_height)
 {
   int original_errno = 0;
   int uinput_fd = -1;
@@ -80,19 +80,33 @@ int suinput_open(const char* device_name, const struct input_id* id)
   if (ioctl(uinput_fd, UI_SET_EVBIT, EV_REP) == -1)
     goto err;
 
-  /* Relative pointer motions */
-  if (ioctl(uinput_fd, UI_SET_EVBIT, EV_REL) == -1)
-    goto err;
+  if (absolute) {
+	// absolute pointer motions
+	if (ioctl(uinput_fd, UI_SET_EVBIT, EV_ABS) == -1)
+	  goto err;
+  } else {
+	/* Relative pointer motions */
+	if (ioctl(uinput_fd, UI_SET_EVBIT, EV_REL) == -1)
+	  goto err;
+  }
 
   /* Synchronization events, this is probably set implicitely too. */
   if (ioctl(uinput_fd, UI_SET_EVBIT, EV_SYN) == -1)
     goto err;
 
-  /* Configure device to handle relative x and y axis. */
-  if (ioctl(uinput_fd, UI_SET_RELBIT, REL_X) == -1)
-    goto err;
-  if (ioctl(uinput_fd, UI_SET_RELBIT, REL_Y) == -1)
-    goto err;
+  if (absolute) {
+    // configure device to handle absolute x and y axis.
+    if (ioctl(uinput_fd, UI_SET_ABSBIT, ABS_X) == -1)
+      goto err;
+    if (ioctl(uinput_fd, UI_SET_ABSBIT, ABS_Y) == -1)
+      goto err;
+  } else {
+     /* Configure device to handle relative x and y axis. */
+     if (ioctl(uinput_fd, UI_SET_RELBIT, REL_X) == -1)
+       goto err;
+     if (ioctl(uinput_fd, UI_SET_RELBIT, REL_Y) == -1)
+       goto err;
+  }
 
   /* Configure device to handle all keys, see linux/input.h. */
   for (i = 0; i < KEY_MAX; i++) {
@@ -107,6 +121,12 @@ int suinput_open(const char* device_name, const struct input_id* id)
   user_dev.id.vendor = id->vendor;
   user_dev.id.product = id->product;
   user_dev.id.version = id->version;
+
+  if (absolute) {
+    // support absolute coordinate
+    user_dev.absmax[ABS_X] = screen_width - 1;
+    user_dev.absmax[ABS_Y] = screen_height - 1;
+  }
 
   if (write(uinput_fd, &user_dev, sizeof(user_dev)) != sizeof(user_dev))
     goto err;
@@ -167,6 +187,13 @@ int suinput_move_pointer(int uinput_fd, int32_t x, int32_t y)
   if (suinput_write(uinput_fd, EV_REL, REL_X, x))
     return -1;
   return suinput_write_syn(uinput_fd, EV_REL, REL_Y, y);
+}
+
+int suinput_set_pointer(int uinput_fd, int32_t x, int32_t y)
+{
+  if (suinput_write(uinput_fd, EV_ABS, ABS_X, x))
+    return -1;
+  return suinput_write_syn(uinput_fd, EV_ABS, ABS_Y, y);
 }
 
 int suinput_press(int uinput_fd, uint16_t code)

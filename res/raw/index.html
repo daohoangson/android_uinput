@@ -8,24 +8,24 @@
 </head>
 <body>
 	<form action="/key/press" method="post">
-		<input type="text" name="key" placeholder="key" />
-		<label>
-			<input type="checkbox" name="shift" value="1" />
-			Shift
-		</label>
-		<label>
-			<input type="checkbox" name="alt" value="1" />
-			Alt
-		</label>
-		
-		<input type="submit" value="Send keypress" />
+		<input type="text" name="key" placeholder="key" /> <label><input
+			type="checkbox" name="shift" value="1" />Shift</label> <label><input
+			type="checkbox" name="alt" value="1" />Alt</label> <input type="submit"
+			value="Send keypress command" />
 	</form>
-	
-	<form action="/pointer/tap" method="post">
-		<input type="text" name="x" placeholder="x" />
-		<input type="text" name="y" placeholder="y" />
-		
-		<input type="submit" value="Send pointer tap" />
+
+	<hr />
+
+	<form action="/pointer" method="post">
+		<input type="text" name="x" placeholder="x" /> <input type="text"
+			name="y" placeholder="y" /> <select name="btn_touch"><option
+				value="">BTN_TOUCH</option>
+			<option value="down">Down</option>
+			<option value="up">Up</option></select> <select name="btn_left"><option
+				value="">BTN_LEFT</option>
+			<option value="down">Down</option>
+			<option value="up">Up</option></select> <input type="submit"
+			value="Send pointer command" />
 	</form>
 </body>
 </html>

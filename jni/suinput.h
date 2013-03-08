@@ -20,6 +20,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 #ifndef SUINPUT_H
 #define SUINPUT_H
 #include <stdint.h>
+#include <stdbool.h>
 
 #include "include/uinput.h"
 
@@ -28,7 +29,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
   descriptor on success. On error, -1 is returned, and errno is set
   appropriately.
 */
-int suinput_open(const char* device_name, const struct input_id* id);
+int suinput_open(const char* device_name, const struct input_id* id, bool absolute, int32_t screen_width, int32_t screen_height);
 
 /* 
   Destroys and closes a connection to the event device. Returns 0 on success.

@@ -12,16 +12,15 @@ import java.util.concurrent.Executors;
 
 import org.apache.http.util.ByteArrayBuffer;
 
-import fi.iki.elonen.nanohttpd.NanoHTTPD;
-import fi.iki.elonen.nanohttpd.NanoHTTPD.Response;
-
 import android.app.Notification;
 import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Intent;
 import android.os.IBinder;
 import android.support.v4.app.NotificationCompat;
+import android.util.DisplayMetrics;
 import android.util.Log;
+import fi.iki.elonen.nanohttpd.NanoHTTPD;
 
 public class ServiceUinput extends Service {
 
@@ -91,23 +90,48 @@ public class ServiceUinput extends Service {
 		return true;
 	}
 
-	public boolean requestPointerTab(int x, int y) {
+	public boolean requestPointer(final int x, final int y,
+			final String btnTouch, final String btnLeft) {
 		if (!mIsOpened) {
 			return false;
 		}
 
-		final int xFinal = x;
-		final int yFinal = y;
-
 		mExecutors.execute(new Runnable() {
 			@Override
 			public void run() {
-				boolean pointerTapResult = NativeMethods.pointerTap(xFinal,
-						yFinal);
+				boolean setResult = NativeMethods.pointerSet(x, y);
 				Log.v(TAG,
 						String.format(
-								"requestPointerTab(%d,%d) -> NativeMethods.pointerTap() = %s",
-								xFinal, yFinal, pointerTapResult));
+								"requestPointer -> NativeMethods.pointerSet(%d, %d) = %s",
+								x, y, setResult));
+
+				if ("down".equals(btnTouch)) {
+					boolean touchResult = NativeMethods
+							.keyDown(NativeMethods.BTN_TOUCH);
+					Log.v(TAG, String.format(
+							"requestPointer -> NativeMethods.keyDown(%d) = %s",
+							NativeMethods.BTN_TOUCH, touchResult));
+				} else if ("up".equals(btnTouch)) {
+					boolean touchResult = NativeMethods
+							.keyUp(NativeMethods.BTN_TOUCH);
+					Log.v(TAG, String.format(
+							"requestPointer -> NativeMethods.keyUp(%d) = %s",
+							NativeMethods.BTN_TOUCH, touchResult));
+				}
+				
+				if ("down".equals(btnLeft)) {
+					boolean touchResult = NativeMethods
+							.keyDown(NativeMethods.BTN_LEFT);
+					Log.v(TAG, String.format(
+							"requestPointer -> NativeMethods.keyDown(%d) = %s",
+							NativeMethods.BTN_LEFT, touchResult));
+				} else if ("up".equals(btnLeft)) {
+					boolean touchResult = NativeMethods
+							.keyUp(NativeMethods.BTN_LEFT);
+					Log.v(TAG, String.format(
+							"requestPointer -> NativeMethods.keyUp(%d) = %s",
+							NativeMethods.BTN_LEFT, touchResult));
+				}
 			}
 		});
 
@@ -132,9 +156,13 @@ public class ServiceUinput extends Service {
 			return;
 		}
 
-		mIsOpened = NativeMethods.open();
-		Log.v(TAG,
-				String.format("open -> NativeMethods.open() = %s", mIsOpened));
+		DisplayMetrics metrics = getResources().getDisplayMetrics();
+		int width = metrics.widthPixels;
+		int height = metrics.heightPixels;
+
+		mIsOpened = NativeMethods.open(true, width, height);
+		Log.v(TAG, String.format("open -> NativeMethods.open(%d,%d) = %s",
+				width, height, mIsOpened));
 
 		if (mIsOpened) {
 			try {
@@ -225,11 +253,10 @@ public class ServiceUinput extends Service {
 								HTTP_FORBIDDEN);
 					}
 				}
-			} else if ("/pointer/tap".equals(uri)) {
+			} else if ("/pointer".equals(uri)) {
 				if ("post".equalsIgnoreCase(method)) {
-					boolean pointerTapResult = servePointerTap(header, params,
-							files);
-					if (pointerTapResult) {
+					boolean pointerResult = servePointer(header, params, files);
+					if (pointerResult) {
 						return new Response(HTTP_OK, MIME_PLAINTEXT, HTTP_OK);
 					} else {
 						return new Response(HTTP_FORBIDDEN, MIME_PLAINTEXT,
@@ -270,12 +297,14 @@ public class ServiceUinput extends Service {
 			return requestKeyPress(key, shift, alt);
 		}
 
-		private boolean servePointerTap(Properties header, Properties params,
+		private boolean servePointer(Properties header, Properties params,
 				Properties files) {
 			int x = parseParamInt(params, "x");
 			int y = parseParamInt(params, "y");
-			
-			return requestPointerTab(x, y);
+			String btnTouch = params.getProperty("btn_touch");
+			String btnLeft = params.getProperty("btn_left");
+
+			return requestPointer(x, y, btnTouch, btnLeft);
 		}
 
 		private int parseParamInt(Properties params, String name) {
