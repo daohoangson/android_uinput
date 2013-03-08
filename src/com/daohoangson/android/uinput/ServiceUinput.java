@@ -235,6 +235,7 @@ public class ServiceUinput extends Service {
 			mFileMapping.put("/", R.raw.index);
 			mFileMapping.put("/interactive", R.raw.interactive);
 			mFileMapping.put("/js/uinput.js", R.raw.uinput);
+			mFileMapping.put("/js/keycode.js", R.raw.keycode);
 
 			Log.v(TAG, String.format("new HttpServer(%d) ok", port));
 		}

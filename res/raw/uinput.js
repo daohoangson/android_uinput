@@ -3,61 +3,40 @@
 	var $screen;
 	var widthScale, heightScale;
 
-	var getLinuxKeyCombo = function(e) {
+	var getLinuxKeyCombo = function(normalized) {
 		// ideas from http://www.math.bme.hu/~morap/RemoteInput/
 		// q,w,e,r,t,y,u,i,o,p,a,s,d,f,g,h,j,k,l,z,x,c,v,b,n,m
 		var qwerty = [ 30, 48, 46, 32, 18, 33, 34, 35, 23, 36, 37, 38, 50, 49,
 				24, 25, 16, 19, 31, 20, 22, 47, 17, 45, 21, 44 ];
-		
+
 		var specialChars = {};
-		specialChars[32] = [57, false]; // <space>
-		specialChars[33] = [2, true]; // !
-		specialChars[34] = [40, true]; // "
-		specialChars[35] = [4, true]; // #
-		specialChars[36] = [5, true]; // $
-		specialChars[37] = [6, true]; // %
-		specialChars[38] = [8, true]; // &
-		specialChars[39] = [40, false]; // '
-		specialChars[40] = [10, true]; // (
-		specialChars[41] = [11, true]; // )
-		specialChars[42] = [9, true]; // *
-		specialChars[43] = [13, true]; // +
-		specialChars[44] = [51, false]; // ,
-		specialChars[45] = [12, false]; // -
-		specialChars[46] = [52, false]; // .
-		specialChars[47] = [53, false]; // /
-		specialChars[58] = [39, true]; // :
-		specialChars[59] = [39, false]; // ;
-		specialChars[60] = [51, true]; // <
-		specialChars[61] = [13, false]; // =
-		specialChars[62] = [52, true]; // >
-		specialChars[63] = [53, true]; // ?
-		specialChars[64] = [3, true]; // @
-		specialChars[91] = [26, false]; // [
-		specialChars[92] = [43, false]; // \
-		specialChars[93] = [27, false]; // ]
-		specialChars[94] = [7, true]; // ^
-		specialChars[95] = [12, true]; // _
-		specialChars[96] = [41, false]; // `
-		specialChars[123] = [26, true]; // {
-		specialChars[124] = [43, true]; // |
-		specialChars[125] = [27, true]; // }
-		specialChars[126] = [41, true]; // ~
-		specialChars[127] = [14, false]; // <del>
+		specialChars[8] = 14; // <backspace>
+		specialChars[9] = 15; // <tab>
+		specialChars[13] = 28; // <enter>
+		specialChars[27] = 158; // <esc> -> <back>
+		specialChars[32] = 57; // <space>
+		specialChars[37] = 105; // <left>
+		specialChars[38] = 103; // <up>
+		specialChars[39] = 106; // <right>
+		specialChars[40] = 108; // <down>
+		specialChars[44] = 51; // ,
+		specialChars[62] = 52; // .
+		specialChars[47] = 53; // /
+		specialChars[59] = 39; // ;
+		specialChars[61] = 13; // =
+		specialChars[91] = 26; // [
+		specialChars[92] = 43; // \
+		specialChars[93] = 27; // ]
+		specialChars[95] = 12; // - ***
+		specialChars[126] = 41; // ` ***
+		specialChars[222] = 40; // ' (looks like a special case from keycode.js)
 
-		var jsKeyCode = e.keyCode;
+		var jsKeyCode = normalized.code;
 		var linuxKeyCode = 0;
-		var shift = false
 
-		if (97 <= jsKeyCode && jsKeyCode <= 122) {
-			// 97 = a
-			// 122 = z
-			linuxKeyCode = qwerty[jsKeyCode - 97];
-		}
 		if (65 <= jsKeyCode && jsKeyCode <= 90) {
 			// 65 = A
 			// 90 = Z
-			shift = true;
 			linuxKeyCode = qwerty[jsKeyCode - 65];
 		}
 
@@ -70,13 +49,13 @@
 			// 48 = 0
 			linuxKeyCode = 11;
 		}
-		
+
 		if (typeof specialChars[jsKeyCode] !== 'undefined') {
-			linuxKeyCode = specialChars[jsKeyCode][0];
-			shift = specialChars[jsKeyCode][1];
+			linuxKeyCode = specialChars[jsKeyCode];
 		}
 
-		return [ linuxKeyCode, shift ];
+		return [ linuxKeyCode, normalized.shift, normalized.alt,
+				normalized.ctrl ];
 	}
 
 	var setupScreen = function() {
@@ -142,7 +121,7 @@
 					btn_left : 'down'
 				}
 			});
-		})
+		});
 
 		$screen.mouseup(function(e) {
 			var deviceXY = getDeviceXY(e);
@@ -157,21 +136,27 @@
 					btn_left : 'up'
 				}
 			});
-		})
+		});
 
-		$document.keypress(function(e) {
-			// TODO: convert e.keyCode to Linux key code
-			var combo = getLinuxKeyCombo(e);
+		$document.keydown(function(e) {
+			e.preventDefault();
+
+			var normalized = KeyCode.translate_event(e);
+			var combo = getLinuxKeyCombo(normalized);
 			var key = combo[0];
 			var shift = combo[1];
-			
+
 			if (key == 0) {
 				// do not send keypress for unknown key
-				console.error('unknown key', e);
+				if (e.keyCode != 16 && e.keyCode != 17 && e.keyCode != 18) {
+					// skip printing error for shift, ctrl and alt keys
+					console.error('unknown key', e.keyCode, normalized, KeyCode
+							.hot_key(normalized));
+				}
 				return;
 			}
 
-			console.log('keypress', key);
+			console.log('keydown', key);
 			$.ajax('/key/press', {
 				type : 'POST',
 				data : {
@@ -179,7 +164,7 @@
 					shift : (shift ? 1 : 0)
 				}
 			});
-		})
+		});
 	}
 
 	$document.ready(function() {
