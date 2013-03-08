@@ -11,6 +11,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 import org.apache.http.util.ByteArrayBuffer;
+import org.json.JSONException;
+import org.json.JSONObject;
 
 import android.app.Notification;
 import android.app.PendingIntent;
@@ -30,8 +32,10 @@ public class ServiceUinput extends Service {
 	private final static String TAG = "ServiceUinput";
 
 	private boolean mIsOpened = false;
-	private ExecutorService mExecutors;
-	private HttpServer mHttpServer;
+	private int mScreenWidth = 0;
+	private int mScreenHeight = 0;
+	private ExecutorService mExecutors = null;
+	private HttpServer mHttpServer = null;
 	private NotificationCompat.Builder mBuilderForeground = null;
 
 	public ServiceUinput() {
@@ -118,7 +122,7 @@ public class ServiceUinput extends Service {
 							"requestPointer -> NativeMethods.keyUp(%d) = %s",
 							NativeMethods.BTN_TOUCH, touchResult));
 				}
-				
+
 				if ("down".equals(btnLeft)) {
 					boolean touchResult = NativeMethods
 							.keyDown(NativeMethods.BTN_LEFT);
@@ -155,15 +159,16 @@ public class ServiceUinput extends Service {
 			// nothing to do here
 			return;
 		}
-
+		
 		DisplayMetrics metrics = getResources().getDisplayMetrics();
-		int width = metrics.widthPixels;
-		int height = metrics.heightPixels;
+		mScreenWidth = metrics.widthPixels;
+		mScreenHeight = metrics.heightPixels;
 
-		mIsOpened = NativeMethods.open(true, width, height);
+		mIsOpened = NativeMethods.open(true, mScreenWidth, mScreenHeight);
 		Log.v(TAG, String.format("open -> NativeMethods.open(%d,%d) = %s",
-				width, height, mIsOpened));
-
+				mScreenWidth, mScreenHeight, mIsOpened));
+		// TODO: calibration
+		
 		if (mIsOpened) {
 			try {
 				mHttpServer = new HttpServer(Constant.HTTP_PORT);
@@ -228,6 +233,7 @@ public class ServiceUinput extends Service {
 			super(port, new File(Constant.HTTP_WWW_ROOT));
 
 			mFileMapping.put("/", R.raw.index);
+			mFileMapping.put("/interactive", R.raw.interactive);
 			mFileMapping.put("/js/uinput.js", R.raw.uinput);
 
 			Log.v(TAG, String.format("new HttpServer(%d) ok", port));
@@ -263,6 +269,13 @@ public class ServiceUinput extends Service {
 								HTTP_FORBIDDEN);
 					}
 				}
+			} else if ("/device_info.json".equals(uri)) {
+				JSONObject jsonObject = new JSONObject();
+				buildDeviceInfo(jsonObject);
+
+				String response = String.format("var deviceInfo = %s;",
+						jsonObject.toString());
+				return new Response(HTTP_OK, "application/json", response);
 			}
 
 			return super.serve(uri, method, header, params, files);
@@ -305,6 +318,15 @@ public class ServiceUinput extends Service {
 			String btnLeft = params.getProperty("btn_left");
 
 			return requestPointer(x, y, btnTouch, btnLeft);
+		}
+
+		private void buildDeviceInfo(JSONObject jsonObject) {
+			try {
+				jsonObject.put("screenWidth", mScreenWidth);
+				jsonObject.put("screenHeight", mScreenHeight);
+			} catch (JSONException e) {
+				// ignore
+			}
 		}
 
 		private int parseParamInt(Properties params, String name) {
