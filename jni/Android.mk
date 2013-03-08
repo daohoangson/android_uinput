@@ -4,7 +4,7 @@ include $(CLEAR_VARS)
 
 LOCAL_MODULE    := uinputdemo
 LOCAL_SRC_FILES := \
-	functions.c \
+	uinputdemo.c \
 	suinput.c
 
 LOCAL_LDLIBS := -llog
