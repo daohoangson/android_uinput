@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>/dev/uinput</title>
+<script src="//ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
+<script src="/js/uinput.js"></script>
+</head>
+<body>
+	<form action="/key/press" method="post">
+		<input type="text" name="key" placeholder="key" />
+		<label>
+			<input type="checkbox" name="shift" value="1" />
+			Shift
+		</label>
+		<label>
+			<input type="checkbox" name="alt" value="1" />
+			Alt
+		</label>
+		
+		<input type="submit" value="Send keypress" />
+	</form>
+	
+	<form action="/pointer/tap" method="post">
+		<input type="text" name="x" placeholder="x" />
+		<input type="text" name="y" placeholder="y" />
+		
+		<input type="submit" value="Send pointer tap" />
+	</form>
+</body>
+</html>
