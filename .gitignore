@@ -21,3 +21,6 @@ local.properties
 obj
 libs/armeabi/libuinputdemo.so
 .cproject
+libs/armeabi-v7a/libuinputdemo.so
+libs/x86/libuinputdemo.so
+libs/mips/libuinputdemo.so
