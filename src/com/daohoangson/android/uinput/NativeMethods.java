@@ -1,5 +1,7 @@
 package com.daohoangson.android.uinput;
 
+import java.nio.ByteBuffer;
+
 public class NativeMethods {
 	public static int BTN_LEFT = 0x110;
 	public static int BTN_TOUCH = 0x14a;
@@ -17,6 +19,8 @@ public class NativeMethods {
 	public static native boolean pointerMove(int x, int y);
 
 	public static native boolean pointerSet(int x, int y);
+	
+	public static native long grabScreenShot(ByteBuffer bb);
 
 	static {
 		System.loadLibrary("uinputdemo");

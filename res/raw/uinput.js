@@ -80,6 +80,7 @@
 
 	var setupEvents = function() {
 		var lastMouseMoveSent = 0;
+		var btnLeftDown = false;
 
 		var getDeviceXY = function(e) {
 			return [ Math.floor(e.clientX * widthScale),
@@ -92,51 +93,71 @@
 				// do not send more than once per 100ms
 				return;
 			}
+			if (btnLeftDown == false) {
+				// do not send pointless move reqests
+				return;
+			}
 
 			var deviceXY = getDeviceXY(e);
+			var data = {
+				x : deviceXY[0],
+				y : deviceXY[1]
+			};
 
-			console.log('mousemove', deviceXY[0], deviceXY[1]);
+			console.log('mousemove', data);
 			$.ajax('/pointer', {
 				type : 'POST',
-				data : {
-					x : deviceXY[0],
-					y : deviceXY[1],
-					btn_touch : 'down'
-				}
+				data : data
 			});
 
 			lastMouseMoveSent = timestamp;
+			btnTouchDown = true;
+
+			e.preventDefault();
 		});
 
 		$screen.mousedown(function(e) {
 			var deviceXY = getDeviceXY(e);
+			var data = {
+				x : deviceXY[0],
+				y : deviceXY[1],
+				btn_left : (btnLeftDown ? '' : 'down')
+			};
+			data.btn_touch = data.btn_left;
 
-			console.log('mousedown', deviceXY[0], deviceXY[1]);
+			console.log('mousedown', data);
 			$.ajax('/pointer', {
 				type : 'POST',
-				data : {
-					x : deviceXY[0],
-					y : deviceXY[1],
-					btn_touch : 'down',
-					btn_left : 'down'
-				}
+				data : data
 			});
+
+			btnLeftDown = true;
+
+			e.preventDefault();
 		});
 
-		$screen.mouseup(function(e) {
+		var mouseUpOrOut = function(e) {
 			var deviceXY = getDeviceXY(e);
+			var data = {
+				x : deviceXY[0],
+				y : deviceXY[1],
+				btn_left : (btnLeftDown ? 'up' : '')
+			};
+			data.btn_touch = data.btn_left;
 
-			console.log('mouseup', deviceXY[0], deviceXY[1]);
+			console.log('mouseup', data);
 			$.ajax('/pointer', {
 				type : 'POST',
-				data : {
-					x : deviceXY[0],
-					y : deviceXY[1],
-					btn_touch : 'up',
-					btn_left : 'up'
-				}
+				data : data
 			});
-		});
+
+			btnLeftDown = false;
+
+			e.preventDefault();
+		};
+
+		$screen.mouseup(mouseUpOrOut);
+		$screen.mouseout(mouseUpOrOut);
 
 		$document.keydown(function(e) {
 			e.preventDefault();
@@ -167,10 +188,29 @@
 		});
 	}
 
+	var refreshScreen = function() {
+		var origSrc = $screen.attr('origSrc');
+		if (typeof origSrc == 'undefined') {
+			origSrc = $screen.attr('src');
+			$screen.attr('origSrc', origSrc);
+		}
+
+		var newSrc = origSrc + '?timestamp=' + new Date().getTime();
+		console.log(newSrc);
+		var $img = $('<img />').css('position', 'absolute').css('width', '0')
+				.css('height', '0').insertAfter($screen);
+		$img.load(function() {
+			$screen.attr('src', $img.attr('src'));
+			setTimeout(refreshScreen, 250);
+		});
+		$img.attr('src', newSrc);
+	};
+
 	$document.ready(function() {
 		$screen = $('#screen');
 
 		setupScreen();
 		setupEvents();
+		refreshScreen();
 	});
 })(jQuery);

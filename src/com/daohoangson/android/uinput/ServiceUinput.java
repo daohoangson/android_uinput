@@ -1,10 +1,16 @@
 package com.daohoangson.android.uinput;
 
 import java.io.BufferedInputStream;
+import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.ByteBuffer;
+import java.text.SimpleDateFormat;
+import java.util.Calendar;
+import java.util.Date;
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.ExecutorService;
@@ -14,14 +20,18 @@ import org.apache.http.util.ByteArrayBuffer;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import android.annotation.TargetApi;
 import android.app.Notification;
 import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Intent;
+import android.graphics.Point;
+import android.os.Build;
 import android.os.IBinder;
 import android.support.v4.app.NotificationCompat;
-import android.util.DisplayMetrics;
 import android.util.Log;
+import android.view.Display;
+import android.view.WindowManager;
 import fi.iki.elonen.nanohttpd.NanoHTTPD;
 
 public class ServiceUinput extends Service {
@@ -34,6 +44,8 @@ public class ServiceUinput extends Service {
 	private boolean mIsOpened = false;
 	private int mScreenWidth = 0;
 	private int mScreenHeight = 0;
+	private ByteBuffer mScreenFb = null;
+	private ByteBuffer mNormalFb = null;
 	private ExecutorService mExecutors = null;
 	private HttpServer mHttpServer = null;
 	private NotificationCompat.Builder mBuilderForeground = null;
@@ -154,21 +166,63 @@ public class ServiceUinput extends Service {
 		}
 	}
 
+	@TargetApi(Build.VERSION_CODES.JELLY_BEAN_MR1)
+	private void getScreenSize17(Display display) {
+		Point size = new Point();
+		display.getRealSize(size);
+		mScreenWidth = size.x;
+		mScreenHeight = size.y;
+		Log.v(TAG, String.format("getScreenSize v17 ok: w=%d, h=%d",
+				mScreenWidth, mScreenHeight));
+	}
+
+	@TargetApi(Build.VERSION_CODES.HONEYCOMB_MR2)
+	private void getScreenSize13(Display display) {
+		Point size = new Point();
+		display.getSize(size);
+		mScreenWidth = size.x;
+		mScreenHeight = size.y;
+		Log.v(TAG, String.format("getScreenSize v13 ok: w=%d, h=%d",
+				mScreenWidth, mScreenHeight));
+	}
+
+	@SuppressWarnings("deprecation")
+	private void getScreenSize1(Display display) {
+		mScreenWidth = display.getWidth();
+		mScreenHeight = display.getHeight();
+		Log.v(TAG, String.format("getScreenSize v1 ok: w=%d, h=%d",
+				mScreenWidth, mScreenHeight));
+	}
+
 	private synchronized void open() {
 		if (mIsOpened) {
 			// nothing to do here
 			return;
 		}
-		
-		DisplayMetrics metrics = getResources().getDisplayMetrics();
-		mScreenWidth = metrics.widthPixels;
-		mScreenHeight = metrics.heightPixels;
+
+		WindowManager wm = (WindowManager) getSystemService(WINDOW_SERVICE);
+		Display display = wm.getDefaultDisplay();
+		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1) {
+			getScreenSize17(display);
+		} else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB_MR1) {
+			getScreenSize13(display);
+		} else {
+			getScreenSize1(display);
+		}
+
+		// width*height*3 should be more than enough to store png screenshot
+		// TODO: move this block of code to constructor
+		mScreenFb = ByteBuffer.allocateDirect(mScreenWidth * mScreenHeight * 3);
+		mScreenFb.mark();
+		if (!mScreenFb.hasArray()) {
+			mNormalFb = ByteBuffer.allocate(mScreenFb.capacity());
+			mNormalFb.mark();
+		}
 
 		mIsOpened = NativeMethods.open(true, mScreenWidth, mScreenHeight);
 		Log.v(TAG, String.format("open -> NativeMethods.open(%d,%d) = %s",
 				mScreenWidth, mScreenHeight, mIsOpened));
-		// TODO: calibration
-		
+
 		if (mIsOpened) {
 			try {
 				mHttpServer = new HttpServer(Constant.HTTP_PORT);
@@ -196,6 +250,15 @@ public class ServiceUinput extends Service {
 
 		mIsOpened = false;
 		disableForeground();
+	}
+
+	private synchronized long grabScreenShot() {
+		mScreenFb.reset();
+		long size = NativeMethods.grabScreenShot(mScreenFb);
+		Log.v(TAG, String.format(
+				"grabScreenShot -> NativeMethods.grabScreenShot() = %d", size));
+
+		return size;
 	}
 
 	private void setupForeground() {
@@ -270,6 +333,49 @@ public class ServiceUinput extends Service {
 								HTTP_FORBIDDEN);
 					}
 				}
+			} else if ("/screen.png".equals(uri)) {
+				String ifModSince = header.getProperty("HTTP_IF_MODIFIED_SINCE");
+				if (ifModSince != null && !ifModSince.isEmpty() ) {
+					Response lastMod = new Response(HTTP_NOTMODIFIED, MIME_PLAINTEXT, HTTP_NOTMODIFIED);
+					lastMod.addHeader("Last-Modified", ifModSince);
+					return lastMod;
+				}
+				
+				long pngSize = grabScreenShot();
+				if (pngSize > 0) {
+					byte[] array = null;
+
+					if (mNormalFb == null) {
+						array = mScreenFb.array();
+					} else {
+						// mNormalFb is required because
+						// directly allocated byte buffer doesn't support
+						// ByteBuffer.array prior to ICS
+						mNormalFb.reset();
+						mNormalFb.put(mScreenFb);
+						array = mNormalFb.array();
+					}
+
+					Response response = new Response(HTTP_OK, "image/png",
+							new ByteArrayInputStream(array, 0, (int) pngSize));
+					response.addHeader("Cache-Control",
+							"private, max-age=10800, pre-check=10800");
+					response.addHeader("Pragma", "private");
+
+					SimpleDateFormat rfc822 = new SimpleDateFormat(
+							"EEE', 'dd' 'MMM' 'yyyy' 'HH:mm:ss' 'Z", Locale.US);
+					Date date = new Date();
+					Calendar calendar = Calendar.getInstance();
+					calendar.setTime(date);
+					calendar.add(Calendar.YEAR, 1);
+					Date dateFuture = calendar.getTime();
+					response.addHeader("Expires", rfc822.format(dateFuture));
+
+					return response;
+				} else {
+					return new Response(HTTP_INTERNALERROR, MIME_PLAINTEXT,
+							HTTP_INTERNALERROR);
+				}
 			} else if ("/device_info.json".equals(uri)) {
 				JSONObject jsonObject = new JSONObject();
 				buildDeviceInfo(jsonObject);
@@ -290,11 +396,11 @@ public class ServiceUinput extends Service {
 			if (mFileMapping.containsKey(uri)) {
 				String mimeType = MIME_HTML;
 				String contents = getRaw(mFileMapping.get(uri));
-				
+
 				if (uri.endsWith(".js")) {
 					mimeType = "text/javascript";
 				}
-				
+
 				res = new Response(HTTP_OK, mimeType, contents);
 			} else {
 				// no file found

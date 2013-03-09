@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdint.h>
 
+#include "log.h"
 #include "suinput.h"
 #include "util.h"
 
@@ -103,4 +104,12 @@ jboolean Java_com_daohoangson_android_uinput_NativeMethods_pointerSet(
 	LOGV("suinput_set_pointer(%d,%d,%d) = %d", uinput_fd, x, y, retval);
 
 	return retval == 0 ? JNI_TRUE : JNI_FALSE;
+}
+
+jlong Java_com_daohoangson_android_uinput_NativeMethods_grabScreenShot(
+		JNIEnv* env, jobject thiz, jobject bb) {
+	jbyte* data = (*env)->GetDirectBufferAddress(env, bb);
+	jlong size = (*env)->GetDirectBufferCapacity(env, bb);
+
+	return fb2png(data, size);
 }
