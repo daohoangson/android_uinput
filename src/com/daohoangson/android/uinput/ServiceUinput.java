@@ -288,8 +288,14 @@ public class ServiceUinput extends Service {
 			Response res = null;
 
 			if (mFileMapping.containsKey(uri)) {
-				String fileHtml = getRaw(mFileMapping.get(uri));
-				res = new Response(HTTP_OK, MIME_HTML, fileHtml);
+				String mimeType = MIME_HTML;
+				String contents = getRaw(mFileMapping.get(uri));
+				
+				if (uri.endsWith(".js")) {
+					mimeType = "text/javascript";
+				}
+				
+				res = new Response(HTTP_OK, mimeType, contents);
 			} else {
 				// no file found
 				res = new Response(HTTP_NOTFOUND, MIME_PLAINTEXT, HTTP_NOTFOUND);
