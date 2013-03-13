@@ -42,6 +42,7 @@ public class ServiceUinput extends Service {
 	private final static String TAG = "ServiceUinput";
 
 	private boolean mIsOpened = false;
+	private boolean mFlagSkipNativeGrabScreenshot = false;
 	private int mScreenWidth = 0;
 	private int mScreenHeight = 0;
 	private ByteBuffer mScreenFb = null;
@@ -223,6 +224,9 @@ public class ServiceUinput extends Service {
 		Log.v(TAG, String.format("open -> NativeMethods.open(%d,%d) = %s",
 				mScreenWidth, mScreenHeight, mIsOpened));
 
+		// initialize variables
+		mFlagSkipNativeGrabScreenshot = false;
+
 		if (mIsOpened) {
 			try {
 				mHttpServer = new HttpServer(Constant.HTTP_PORT);
@@ -253,10 +257,26 @@ public class ServiceUinput extends Service {
 	}
 
 	private synchronized long grabScreenShot() {
-		mScreenFb.reset();
-		long size = NativeMethods.grabScreenShot(mScreenFb);
-		Log.v(TAG, String.format(
-				"grabScreenShot -> NativeMethods.grabScreenShot() = %d", size));
+		long size = 0;
+
+		if (!mFlagSkipNativeGrabScreenshot) {
+			mScreenFb.reset();
+			size = NativeMethods.grabScreenShot(mScreenFb);
+			Log.v(TAG, String.format("grabScreenShot -> "
+					+ "NativeMethods.grabScreenShot() = %d", size));
+		}
+
+		if (size < 10000) {
+			// png data less than 10KB?
+			// try using shell scripts
+			mScreenFb.reset();
+			size = ShellScripts.execScreencap(mScreenFb);
+			Log.v(TAG, String.format("grabScreenShot -> "
+					+ "ShellScripts.execScreencap() = %d", size));
+
+			// also mark the flag to skip native method next time
+			mFlagSkipNativeGrabScreenshot = true;
+		}
 
 		return size;
 	}
@@ -334,13 +354,15 @@ public class ServiceUinput extends Service {
 					}
 				}
 			} else if ("/screen.png".equals(uri)) {
-				String ifModSince = header.getProperty("HTTP_IF_MODIFIED_SINCE");
-				if (ifModSince != null && !ifModSince.isEmpty() ) {
-					Response lastMod = new Response(HTTP_NOTMODIFIED, MIME_PLAINTEXT, HTTP_NOTMODIFIED);
+				String ifModSince = header
+						.getProperty("HTTP_IF_MODIFIED_SINCE");
+				if (ifModSince != null && !ifModSince.isEmpty()) {
+					Response lastMod = new Response(HTTP_NOTMODIFIED,
+							MIME_PLAINTEXT, HTTP_NOTMODIFIED);
 					lastMod.addHeader("Last-Modified", ifModSince);
 					return lastMod;
 				}
-				
+
 				long pngSize = grabScreenShot();
 				if (pngSize > 0) {
 					byte[] array = null;
