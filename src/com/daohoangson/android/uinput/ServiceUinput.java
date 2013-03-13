@@ -3,6 +3,7 @@ package com.daohoangson.android.uinput;
 import java.io.BufferedInputStream;
 import java.io.ByteArrayInputStream;
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
@@ -25,6 +26,7 @@ import android.app.Notification;
 import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Intent;
+import android.content.res.Resources.NotFoundException;
 import android.graphics.Point;
 import android.os.Build;
 import android.os.IBinder;
@@ -319,6 +321,7 @@ public class ServiceUinput extends Service {
 			mFileMapping.put("/interactive", R.raw.interactive);
 			mFileMapping.put("/js/uinput.js", R.raw.uinput);
 			mFileMapping.put("/js/keycode.js", R.raw.keycode);
+			mFileMapping.put("/launcher.png", R.drawable.ic_launcher);
 
 			Log.v(TAG, String.format("new HttpServer(%d) ok", port));
 		}
@@ -416,15 +419,25 @@ public class ServiceUinput extends Service {
 			Response res = null;
 
 			if (mFileMapping.containsKey(uri)) {
+				int resId = mFileMapping.get(uri);
 				String mimeType = MIME_HTML;
-				String contents = getRaw(mFileMapping.get(uri));
 
 				if (uri.endsWith(".js")) {
 					mimeType = "text/javascript";
+				} else if (uri.endsWith(".png")) {
+					mimeType = "image/png";
 				}
 
-				res = new Response(HTTP_OK, mimeType, contents);
-			} else {
+				try {
+					InputStream is = getResources().openRawResource(resId);
+					res = new Response(HTTP_OK, mimeType, is);
+				} catch (NotFoundException e) {
+					Log.e(TAG, String.format("serveFile -> "
+							+ "openRawResource(%d) failed", resId), e);
+				}
+			}
+
+			if (res == null) {
 				// no file found
 				res = new Response(HTTP_NOTFOUND, MIME_PLAINTEXT, HTTP_NOTFOUND);
 			}
@@ -484,23 +497,6 @@ public class ServiceUinput extends Service {
 			}
 
 			return valueInt;
-		}
-
-		private String getRaw(int resId) {
-			InputStream is = getResources().openRawResource(resId);
-			BufferedInputStream bis = new BufferedInputStream(is);
-			ByteArrayBuffer baf = new ByteArrayBuffer(50);
-
-			int current = 0;
-			try {
-				while ((current = bis.read()) != -1) {
-					baf.append((byte) current);
-				}
-			} catch (IOException e) {
-				Log.e(TAG, "getRaw -> bis.read() failed", e);
-			}
-
-			return new String(baf.toByteArray());
 		}
 	}
 }
