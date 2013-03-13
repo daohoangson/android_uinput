@@ -401,6 +401,11 @@ public class ServiceUinput extends Service {
 					return new Response(HTTP_INTERNALERROR, MIME_PLAINTEXT,
 							HTTP_INTERNALERROR);
 				}
+			} else if ("/favicon.ico".equals(uri)) {
+				Response res = new Response(HTTP_REDIRECT, MIME_PLAINTEXT, "");
+				res.addHeader("Location", "/launcher.png");
+				
+				return res;
 			} else if ("/device_info.json".equals(uri)) {
 				JSONObject jsonObject = new JSONObject();
 				buildDeviceInfo(jsonObject);
