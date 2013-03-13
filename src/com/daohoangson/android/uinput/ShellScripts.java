@@ -20,7 +20,7 @@ public class ShellScripts {
 
 	public static long execScreencap(ByteBuffer bb) {
 		File dir = Environment.getExternalStorageDirectory();
-		File file = new File(dir, "demo.png");
+		File file = new File(dir, "screen.png");
 
 		int execResult = execAndWait(String.format(Locale.US,
 				"screencap -p %s", file.getPath()));
