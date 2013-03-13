@@ -1,9 +1,7 @@
 package com.daohoangson.android.uinput;
 
-import java.io.BufferedInputStream;
 import java.io.ByteArrayInputStream;
 import java.io.File;
-import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
@@ -17,7 +15,6 @@ import java.util.Properties;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-import org.apache.http.util.ByteArrayBuffer;
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -47,14 +44,20 @@ public class ServiceUinput extends Service {
 	private boolean mFlagSkipNativeGrabScreenshot = false;
 	private int mScreenWidth = 0;
 	private int mScreenHeight = 0;
-	private ByteBuffer mScreenFb = null;
-	private ByteBuffer mNormalFb = null;
+	private int mScreenPngSize = 0;
+	private long mScreenTimestamp = 0;
+	private long mScreenRequestTimestamp = 0;
+	private ByteBuffer mScreen = null;
+	private ByteBuffer mScreenBuffer = null;
 	private ExecutorService mExecutors = null;
+	private ExecutorService mScreenExecutors = null;
 	private HttpServer mHttpServer = null;
 	private NotificationCompat.Builder mBuilderForeground = null;
+	private Runnable mScreenGrabber = null;
 
 	public ServiceUinput() {
 		mExecutors = Executors.newFixedThreadPool(1);
+		mScreenExecutors = Executors.newFixedThreadPool(1);
 	}
 
 	@Override
@@ -215,19 +218,21 @@ public class ServiceUinput extends Service {
 
 		// width*height*3 should be more than enough to store png screenshot
 		// TODO: move this block of code to constructor
-		mScreenFb = ByteBuffer.allocateDirect(mScreenWidth * mScreenHeight * 3);
-		mScreenFb.mark();
-		if (!mScreenFb.hasArray()) {
-			mNormalFb = ByteBuffer.allocate(mScreenFb.capacity());
-			mNormalFb.mark();
-		}
+		mScreenBuffer = ByteBuffer.allocateDirect(mScreenWidth * mScreenHeight
+				* 3);
+		mScreenBuffer.mark();
+		mScreen = ByteBuffer.allocate(mScreenBuffer.capacity());
+		mScreen.mark();
+
+		// initialize variables
+		mFlagSkipNativeGrabScreenshot = true;
+		mScreenPngSize = 0;
+		mScreenTimestamp = 0;
+		mScreenRequestTimestamp = 0;
 
 		mIsOpened = NativeMethods.open(true, mScreenWidth, mScreenHeight);
 		Log.v(TAG, String.format("open -> NativeMethods.open(%d,%d) = %s",
 				mScreenWidth, mScreenHeight, mIsOpened));
-
-		// initialize variables
-		mFlagSkipNativeGrabScreenshot = false;
 
 		if (mIsOpened) {
 			try {
@@ -235,6 +240,8 @@ public class ServiceUinput extends Service {
 			} catch (IOException e) {
 				Log.e(TAG, "open -> new HttpServer() failed", e);
 			}
+			
+			Log.i(TAG, "mIsOpened = true");
 
 			setupForeground();
 		}
@@ -255,15 +262,45 @@ public class ServiceUinput extends Service {
 		}
 
 		mIsOpened = false;
+		Log.i(TAG, "mIsOpened = false");
+		
 		disableForeground();
 	}
 
-	private synchronized long grabScreenShot() {
+	private void grabScreenShot() {
+		if (mScreenGrabber == null) {
+			// the grabber is not running, grab the screenshot asap
+			grabScreenShotReal();
+			
+			// then start the screen grabber
+			mScreenGrabber = new Runnable() {
+				@Override
+				public void run() {
+					long delta = 0;
+					Log.i(TAG, "mScreenGrabber has been started");
+
+					do {
+						grabScreenShotReal();
+
+						// 5 seconds without further requests shut itself off
+						delta = mScreenTimestamp - mScreenRequestTimestamp;
+					} while (delta < 5000);
+
+					Log.i(TAG, "mScreenGrabber has been stopped");
+					mScreenGrabber = null;
+				}
+			};
+
+			mScreenExecutors.execute(mScreenGrabber);
+		}
+	}
+
+	private synchronized void grabScreenShotReal() {
 		long size = 0;
 
 		if (!mFlagSkipNativeGrabScreenshot) {
-			mScreenFb.reset();
-			size = NativeMethods.grabScreenShot(mScreenFb);
+			mScreenBuffer.reset();
+			size = NativeMethods.grabScreenShot(mScreenBuffer);
 			Log.v(TAG, String.format("grabScreenShot -> "
 					+ "NativeMethods.grabScreenShot() = %d", size));
 		}
@@ -271,16 +308,22 @@ public class ServiceUinput extends Service {
 		if (size < 10000) {
 			// png data less than 10KB?
 			// try using shell scripts
-			mScreenFb.reset();
-			size = ShellScripts.execScreencap(mScreenFb);
+			mScreenBuffer.reset();
+			size = ShellScripts.execScreencap(mScreenBuffer);
 			Log.v(TAG, String.format("grabScreenShot -> "
 					+ "ShellScripts.execScreencap() = %d", size));
 
-			// also mark the flag to skip native method next time
-			mFlagSkipNativeGrabScreenshot = true;
+			if (mFlagSkipNativeGrabScreenshot == false) {
+				// also mark the flag to skip native method next time
+				mFlagSkipNativeGrabScreenshot = true;
+				Log.i(TAG, "mFlagSkipNativeGrabScreenshot = true");
+			}
 		}
 
-		return size;
+		mScreenPngSize = (int) size;
+		mScreenTimestamp = getTimestamp();
+		mScreen.reset();
+		mScreen.put(mScreenBuffer);
 	}
 
 	private void setupForeground() {
@@ -357,6 +400,8 @@ public class ServiceUinput extends Service {
 					}
 				}
 			} else if ("/screen.png".equals(uri)) {
+				mScreenRequestTimestamp = getTimestamp();
+
 				String ifModSince = header
 						.getProperty("HTTP_IF_MODIFIED_SINCE");
 				if (ifModSince != null && !ifModSince.isEmpty()) {
@@ -366,23 +411,12 @@ public class ServiceUinput extends Service {
 					return lastMod;
 				}
 
-				long pngSize = grabScreenShot();
-				if (pngSize > 0) {
-					byte[] array = null;
+				grabScreenShot();
 
-					if (mNormalFb == null) {
-						array = mScreenFb.array();
-					} else {
-						// mNormalFb is required because
-						// directly allocated byte buffer doesn't support
-						// ByteBuffer.array prior to ICS
-						mNormalFb.reset();
-						mNormalFb.put(mScreenFb);
-						array = mNormalFb.array();
-					}
-
+				if (mScreenPngSize > 0) {
 					Response response = new Response(HTTP_OK, "image/png",
-							new ByteArrayInputStream(array, 0, (int) pngSize));
+							new ByteArrayInputStream(mScreen.array(), 0,
+									mScreenPngSize));
 					response.addHeader("Cache-Control",
 							"private, max-age=10800, pre-check=10800");
 					response.addHeader("Pragma", "private");
@@ -404,7 +438,7 @@ public class ServiceUinput extends Service {
 			} else if ("/favicon.ico".equals(uri)) {
 				Response res = new Response(HTTP_REDIRECT, MIME_PLAINTEXT, "");
 				res.addHeader("Location", "/launcher.png");
-				
+
 				return res;
 			} else if ("/device_info.json".equals(uri)) {
 				JSONObject jsonObject = new JSONObject();
@@ -503,5 +537,9 @@ public class ServiceUinput extends Service {
 
 			return valueInt;
 		}
+	}
+
+	private static long getTimestamp() {
+		return new Date().getTime();
 	}
 }

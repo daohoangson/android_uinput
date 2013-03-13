@@ -9,6 +9,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.ByteBuffer;
+import java.util.Date;
 import java.util.Locale;
 
 import android.os.Environment;
@@ -66,6 +67,7 @@ public class ShellScripts {
 		int exitValue = -1;
 
 		try {
+			long timestampStart = new Date().getTime();
 			Log.v(TAG, String.format("execAndWait -> exec(%s)", cmd));
 
 			Process p = Runtime.getRuntime().exec("su");
@@ -95,7 +97,9 @@ public class ShellScripts {
 				}
 			}
 
-			Log.v(TAG, String.format("execAndWait() = %d", exitValue));
+			long timestampFinish = new Date().getTime();
+			Log.v(TAG, String.format("execAndWait() = %d (%d ms)", exitValue,
+					timestampFinish - timestampStart));
 		} catch (IOException e) {
 			Log.e(TAG, "execAndWait -> exec() failed", e);
 		} catch (InterruptedException e) {
